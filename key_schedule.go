@@ -8,15 +8,89 @@ import (
 	"crypto/ecdh"
 	"crypto/hmac"
 	"crypto/mlkem"
+	cryptorand "crypto/rand"
 	"errors"
 	"hash"
 	"io"
+	mathrand "math/rand/v2"
+	"sync/atomic"
 
 	"github.com/refraction-networking/utls/internal/tls13"
 )
 
 // This file contains the functions necessary to compute the TLS 1.3 key
 // schedule. See RFC 8446, Section 7.
+
+// keyCache is a lock-free cache pool for pre-generated ECDHE keys
+type keyCache struct {
+	keys []*ecdh.PrivateKey
+	// Using atomic for lock-free random access
+	initialized atomic.Bool
+}
+
+const keyCacheSize = 100
+
+// Global key cache pools for each curve type
+var (
+	keyCacheX25519 = &keyCache{}
+	keyCacheP256   = &keyCache{}
+	keyCacheP384   = &keyCache{}
+	keyCacheP521   = &keyCache{}
+)
+
+// initKeyCache initializes the key cache for a specific curve
+func (kc *keyCache) init(curve ecdh.Curve) {
+	if kc.initialized.Load() {
+		return
+	}
+
+	keys := make([]*ecdh.PrivateKey, keyCacheSize)
+	for i := 0; i < keyCacheSize; i++ {
+		key, err := curve.GenerateKey(cryptorand.Reader)
+		if err != nil {
+			// Fallback: continue with fewer keys if generation fails
+			continue
+		}
+		keys[i] = key
+	}
+	kc.keys = keys
+	kc.initialized.Store(true)
+}
+
+// getRandomKey returns a random key from the cache
+func (kc *keyCache) getRandomKey() *ecdh.PrivateKey {
+	if !kc.initialized.Load() || len(kc.keys) == 0 {
+		return nil
+	}
+	// Lock-free random selection using math/rand/v2
+	idx := mathrand.IntN(len(kc.keys))
+	return kc.keys[idx]
+}
+
+// getCacheForCurveID returns the appropriate key cache for a curve ID
+func getCacheForCurveID(curveID CurveID) *keyCache {
+	switch curveID {
+	case X25519:
+		return keyCacheX25519
+	case CurveP256:
+		return keyCacheP256
+	case CurveP384:
+		return keyCacheP384
+	case CurveP521:
+		return keyCacheP521
+	default:
+		return nil
+	}
+}
+
+// InitAllKeyCaches pre-initializes all key caches for all supported curves.
+// This should be called during application startup for best performance.
+func InitAllKeyCaches() {
+	keyCacheX25519.init(ecdh.X25519())
+	keyCacheP256.init(ecdh.P256())
+	keyCacheP384.init(ecdh.P384())
+	keyCacheP521.init(ecdh.P521())
+}
 
 // nextTrafficSecret generates the next traffic secret, given the current one,
 // according to RFC 8446, Section 7.2.
@@ -61,7 +135,26 @@ const x25519PublicKeySize = 32
 
 // generateECDHEKey returns a PrivateKey that implements Diffie-Hellman
 // according to RFC 8446, Section 4.2.8.2.
+// It uses a pre-generated key cache for high performance.
 func generateECDHEKey(rand io.Reader, curveID CurveID) (*ecdh.PrivateKey, error) {
+	// Try to get a key from the cache first
+	cache := getCacheForCurveID(curveID)
+	if cache != nil {
+		// Lazy initialization: initialize cache on first use if not already done
+		if !cache.initialized.Load() {
+			curve, ok := curveForCurveID(curveID)
+			if ok {
+				cache.init(curve)
+			}
+		}
+
+		// Get a random key from the cache
+		if key := cache.getRandomKey(); key != nil {
+			return key, nil
+		}
+	}
+
+	// Fallback: generate a new key if cache is not available or empty
 	curve, ok := curveForCurveID(curveID)
 	if !ok {
 		return nil, errors.New("tls: internal error: unsupported curve")
