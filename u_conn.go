@@ -183,7 +183,7 @@ func (uconn *UConn) uLoadSession() error {
 			// We use the session ticket extension for tls 1.2 session resumption
 			// [uTLS] Support both SessionID and Session Ticket resumption
 			var ticketData []byte
-			if session.useSessionID {
+			if session.resumeType == ResumeSessionID {
 				// SessionID resumption: use sessionId field
 				ticketData = session.sessionId
 			} else {

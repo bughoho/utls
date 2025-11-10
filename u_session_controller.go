@@ -193,7 +193,7 @@ func (s *sessionController) setSessionTicketToUConn() {
 	s.uconnRef.HandshakeState.Session = session
 	
 	// [uTLS] Support both SessionID and Session Ticket resumption
-	if session != nil && session.useSessionID {
+	if session != nil && session.resumeType == ResumeSessionID {
 		// SessionID resumption: use sessionId field
 		s.uconnRef.HandshakeState.Hello.SessionId = session.sessionId
 		s.uconnRef.HandshakeState.Hello.SessionTicket = nil

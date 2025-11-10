@@ -17,6 +17,15 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
+// ResumeMechanism indicates the session resumption mechanism type for TLS 1.2
+type ResumeMechanism uint8
+
+const (
+	ResumeUnknown       ResumeMechanism = iota // Unknown or not applicable
+	ResumeSessionTicket                        // Session Ticket (RFC 5077)
+	ResumeSessionID                            // SessionID (RFC 5246)
+)
+
 // A SessionState is a resumable session.
 type SessionState struct {
 	// Encoded as a SessionState (in the language of RFC 8446, Section 3).
@@ -99,10 +108,8 @@ type SessionState struct {
 	ticket []byte
 
 	// [uTLS] TLS 1.2 session resumption fields
-	// For SessionID-based resumption
-	sessionId []byte // SessionID for TLS 1.2 session resumption
-	// Indicates the session resumption type
-	useSessionID bool // true = SessionID resumption, false = Session Ticket resumption
+	sessionId    []byte          // SessionID for TLS 1.2 session resumption
+	resumeType   ResumeMechanism // Session resumption mechanism type
 }
 
 // Bytes encodes the session, including any private fields, so that it can be
