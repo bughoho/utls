@@ -188,8 +188,20 @@ func (s *sessionController) initPskExt(session *SessionState, earlySecret *tls13
 // setSessionTicketToUConn write the ticket states from the session ticket extension to the client hello and handshake state.
 func (s *sessionController) setSessionTicketToUConn() {
 	uAssert(s.sessionTicketExt != nil && s.state == SessionTicketExtInitialized, "tls: setSessionTicketExt failed: invalid state")
-	s.uconnRef.HandshakeState.Session = s.sessionTicketExt.GetSession()
-	s.uconnRef.HandshakeState.Hello.SessionTicket = s.sessionTicketExt.GetTicket()
+	session := s.sessionTicketExt.GetSession()
+	
+	s.uconnRef.HandshakeState.Session = session
+	
+	// [uTLS] Support both SessionID and Session Ticket resumption
+	if session != nil && session.useSessionID {
+		// SessionID resumption: use sessionId field
+		s.uconnRef.HandshakeState.Hello.SessionId = session.sessionId
+		s.uconnRef.HandshakeState.Hello.SessionTicket = nil
+	} else {
+		// Session Ticket resumption: use ticket field
+		s.uconnRef.HandshakeState.Hello.SessionTicket = session.ticket
+	}
+	
 	s.state = SessionTicketExtAllSet
 }
 

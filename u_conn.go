@@ -181,7 +181,16 @@ func (uconn *UConn) uLoadSession() error {
 		}
 		if session.version == VersionTLS12 {
 			// We use the session ticket extension for tls 1.2 session resumption
-			uconn.sessionController.initSessionTicketExt(session, hello.sessionTicket)
+			// [uTLS] Support both SessionID and Session Ticket resumption
+			var ticketData []byte
+			if session.useSessionID {
+				// SessionID resumption: use sessionId field
+				ticketData = session.sessionId
+			} else {
+				// Session Ticket resumption: use ticket field
+				ticketData = session.ticket
+			}
+			uconn.sessionController.initSessionTicketExt(session, ticketData)
 			uconn.sessionController.setSessionTicketToUConn()
 		} else {
 			uconn.sessionController.initPskExt(session, earlySecret, binderKey, hello.pskIdentities)

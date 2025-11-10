@@ -486,7 +486,16 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 			return nil, nil, nil, nil
 		}
 
-		hello.sessionTicket = session.ticket
+		// [uTLS] Support SessionID-based resumption
+		// Use the explicit useSessionID flag to determine resumption type
+		if session.useSessionID {
+			// SessionID resumption: use sessionId field
+			hello.sessionId = session.sessionId
+			hello.sessionTicket = nil
+		} else {
+			// Session Ticket resumption: use ticket field
+			hello.sessionTicket = session.ticket
+		}
 		return
 	}
 
@@ -1057,10 +1066,24 @@ func (hs *clientHandshakeState) readSessionTicket() error {
 }
 
 func (hs *clientHandshakeState) saveSessionTicket() error {
-	if hs.ticket == nil {
-		return nil
-	}
 	c := hs.c
+	
+	// [uTLS] Support SessionID-based resumption fallback
+	// Determine session resumption type based on ServerHello
+	useSessionID := false
+	
+	if hs.ticket == nil {
+		// No NewSessionTicket received, check if we should use SessionID
+		// Conditions for SessionID fallback:
+		// 1. TLS 1.2 or earlier
+		// 2. Server provided a non-empty SessionID
+		if c.vers <= VersionTLS12 && len(hs.serverHello.sessionId) > 0 {
+			useSessionID = true
+		} else {
+			// No ticket and no valid SessionID, nothing to save
+			return nil
+		}
+	}
 
 	cacheKey := c.clientSessionCacheKey()
 	if cacheKey == "" {
@@ -1069,7 +1092,18 @@ func (hs *clientHandshakeState) saveSessionTicket() error {
 
 	session := c.sessionState()
 	session.secret = hs.masterSecret
-	session.ticket = hs.ticket
+	session.useSessionID = useSessionID
+	
+	// [uTLS] Store in appropriate field based on resumption type
+	if useSessionID {
+		// SessionID resumption: store in sessionId field
+		session.sessionId = hs.serverHello.sessionId
+		session.ticket = nil
+	} else {
+		// Session Ticket resumption: store in ticket field
+		session.ticket = hs.ticket
+		session.sessionId = nil
+	}
 
 	cs := &ClientSessionState{session: session}
 	// [UTLS BEGIN]

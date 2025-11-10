@@ -97,6 +97,12 @@ type SessionState struct {
 	useBy  uint64 // seconds since UNIX epoch
 	ageAdd uint32
 	ticket []byte
+
+	// [uTLS] TLS 1.2 session resumption fields
+	// For SessionID-based resumption
+	sessionId []byte // SessionID for TLS 1.2 session resumption
+	// Indicates the session resumption type
+	useSessionID bool // true = SessionID resumption, false = Session Ticket resumption
 }
 
 // Bytes encodes the session, including any private fields, so that it can be
