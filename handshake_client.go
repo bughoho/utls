@@ -1070,21 +1070,23 @@ func (hs *clientHandshakeState) saveSessionTicket() error {
 	
 	// [uTLS] Support SessionID-based resumption fallback
 	// Determine session resumption type based on ServerHello
+	// Priority: Session Ticket > SessionID (RFC 5077 is preferred over RFC 5246)
 	var resumeType ResumeMechanism
 	
-	if hs.ticket == nil {
-		// No NewSessionTicket received, check if we should use SessionID
-		// Conditions for SessionID fallback:
-		// 1. TLS 1.2 or earlier
-		// 2. Server provided a non-empty SessionID
-		if c.vers <= VersionTLS12 && len(hs.serverHello.sessionId) > 0 {
-			resumeType = ResumeSessionID
-		} else {
-			// No ticket and no valid SessionID, nothing to save
-			return nil
-		}
-	} else {
+	if hs.ticket != nil {
+		// Received NewSessionTicket: use Session Ticket (highest priority)
 		resumeType = ResumeSessionTicket
+	} else if c.didResume && c.vers <= VersionTLS12 {
+		// Resumed session but no new ticket received
+		// Keep using the existing session from cache (don't overwrite)
+		// The session is already in cache and still valid
+		return nil
+	} else if c.vers <= VersionTLS12 && len(hs.serverHello.sessionId) > 0 {
+		// No NewSessionTicket but server provided SessionID: fallback to SessionID
+		resumeType = ResumeSessionID
+	} else {
+		// No ticket and no valid SessionID, nothing to save
+		return nil
 	}
 
 	cacheKey := c.clientSessionCacheKey()
