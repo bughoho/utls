@@ -488,9 +488,11 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 
 		// [uTLS] Support SessionID-based resumption
 		// Use the resumeType to determine resumption mechanism
-		if session.resumeType == ResumeSessionID {
+		// [uTLS] Check if session has extra fields for TLS 1.2 resumption
+		utlsData := GetSessionExtraFields(session)
+		if utlsData != nil && utlsData.ResumeType == ResumeSessionID {
 			// SessionID resumption: use sessionId field
-			hello.sessionId = session.sessionId
+			hello.sessionId = utlsData.SessionID
 			hello.sessionTicket = nil
 		} else {
 			// Session Ticket resumption: use ticket field
@@ -1096,17 +1098,22 @@ func (hs *clientHandshakeState) saveSessionTicket() error {
 
 	session := c.sessionState()
 	session.secret = hs.masterSecret
-	session.resumeType = resumeType
 	
 	// [uTLS] Store in appropriate field based on resumption type
 	if resumeType == ResumeSessionID {
-		// SessionID resumption: store in sessionId field
-		session.sessionId = hs.serverHello.sessionId
+		// SessionID resumption: store in Extra field
+		SetSessionExtraFields(session, &UTLSSessionData{
+			ResumeType: resumeType,
+			SessionID:  hs.serverHello.sessionId,
+		})
 		session.ticket = nil
 	} else {
 		// Session Ticket resumption: store in ticket field
 		session.ticket = hs.ticket
-		session.sessionId = nil
+		SetSessionExtraFields(session, &UTLSSessionData{
+			ResumeType: resumeType,
+			SessionID:  nil,
+		})
 	}
 
 	cs := &ClientSessionState{session: session}
