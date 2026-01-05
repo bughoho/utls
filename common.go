@@ -772,6 +772,14 @@ type Config struct {
 	// session resumption. It is only used by clients.
 	ClientSessionCache ClientSessionCache
 
+	// PreciseSessionCache controls whether session cache keys include both
+	// ServerName and RemoteAddr for more precise caching. When true, sessions
+	// are cached using "ServerName:RemoteAddr" as the key, allowing different
+	// sessions for the same server but different IP addresses.
+	// When false (default), only ServerName or RemoteAddr is used.
+	// This is only used by clients.
+	PreciseSessionCache bool // [uTLS]
+
 	// UnwrapSession is called on the server to turn a ticket/identity
 	// previously produced by [WrapSession] into a usable session.
 	//

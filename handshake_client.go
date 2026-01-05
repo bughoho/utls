@@ -1069,12 +1069,12 @@ func (hs *clientHandshakeState) readSessionTicket() error {
 
 func (hs *clientHandshakeState) saveSessionTicket() error {
 	c := hs.c
-	
+
 	// [uTLS] Support SessionID-based resumption fallback
 	// Determine session resumption type based on ServerHello
 	// Priority: Session Ticket > SessionID (RFC 5077 is preferred over RFC 5246)
 	var resumeType ResumeMechanism
-	
+
 	if hs.ticket != nil {
 		// Received NewSessionTicket: use Session Ticket (highest priority)
 		resumeType = ResumeSessionTicket
@@ -1098,7 +1098,7 @@ func (hs *clientHandshakeState) saveSessionTicket() error {
 
 	session := c.sessionState()
 	session.secret = hs.masterSecret
-	
+
 	// [uTLS] Store in appropriate field based on resumption type
 	if resumeType == ResumeSessionID {
 		// SessionID resumption: store in Extra field
@@ -1375,6 +1375,13 @@ func (c *Conn) getClientCertificate(cri *CertificateRequestInfo) (*Certificate, 
 // clientSessionCacheKey returns a key used to cache sessionTickets that could
 // be used to resume previously negotiated TLS sessions with a server.
 func (c *Conn) clientSessionCacheKey() string {
+	if c.config.PreciseSessionCache {
+		// Precise mode: combine ServerName and RemoteAddr for more granular caching
+		if len(c.config.ServerName) > 0 && c.conn != nil {
+			return c.config.ServerName + ":" + c.conn.RemoteAddr().String()
+		}
+	}
+	// Default mode: use ServerName first, fallback to RemoteAddr
 	if len(c.config.ServerName) > 0 {
 		return c.config.ServerName
 	}
